@@ -8,15 +8,24 @@ export default function Home() {
     <main>
       <h1>HeaukJun Yoo</h1>
       <p>
-        I&apos;m a product engineer in Seoul. Four years on backend and
-        infrastructure, then four years building products full-stack. I spent
-        most of that on a real-time voice app that grew to two million users —
-        running its backend and infrastructure, building client features, and
-        owning the ad revenue it ran on.
+        I&apos;m an engineer in Seoul. I started in C, on a proxy server that
+        carried every packet for companies of ten thousand people — the kind of
+        system where chasing one bug meant capturing traffic for days and
+        reading RST timings until the cause finally showed itself. That&apos;s
+        where I found out I don&apos;t feel settled until I&apos;ve gone all
+        the way down.
       </p>
       <p>
-        I write about the parts that don&apos;t fit in a resume: what broke,
-        what I got wrong, and what I&apos;d do differently.
+        Since then I&apos;ve been widening what that means. Backend and
+        infrastructure for a voice app while it grew to two million users, then
+        its client, then what it charged people for, and eventually the product
+        calls themselves. The two things I like turn out to be the same reflex:
+        digging until a problem is actually understood, and having it land on
+        something real. I&apos;ve never been willing to give up either one.
+      </p>
+      <p>
+        I write here about the parts that don&apos;t fit in a resume — what
+        broke, what I got wrong, and what I&apos;d do differently.
       </p>
 
       {posts.length > 0 && (
