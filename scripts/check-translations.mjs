@@ -1,5 +1,5 @@
-// Lists published English posts that have no Korean version yet.
-// Run: npm run check
+// Korean is the source language; English is the translation.
+// Reports posts that exist in only one language. Run: npm run check
 import fs from "fs";
 import path from "path";
 
@@ -17,16 +17,24 @@ const files = fs
 const ko = new Set(
   files.filter((f) => /\.ko\.mdx?$/.test(f)).map((f) => f.replace(/\.ko\.mdx?$/, ""))
 );
+const en = new Set(
+  files.filter((f) => !/\.ko\.mdx?$/.test(f)).map((f) => f.replace(/\.mdx?$/, ""))
+);
 
-const missing = files
-  .filter((f) => !/\.ko\.mdx?$/.test(f))
-  .map((f) => f.replace(/\.mdx?$/, ""))
-  .filter((slug) => !ko.has(slug));
+const needsEnglish = [...ko].filter((s) => !en.has(s));
+const needsKorean = [...en].filter((s) => !ko.has(s));
 
-if (missing.length === 0) {
-  console.log("All posts have a Korean version.");
-} else {
-  console.log("Missing Korean translation:");
-  for (const slug of missing) console.log(`  content/${slug}.ko.mdx`);
-  process.exitCode = 1;
+if (needsEnglish.length === 0 && needsKorean.length === 0) {
+  console.log(`All ${ko.size} posts exist in both languages.`);
+  process.exit(0);
 }
+
+if (needsEnglish.length) {
+  console.log("Written in Korean, no English yet:");
+  for (const s of needsEnglish) console.log(`  content/${s}.mdx`);
+}
+if (needsKorean.length) {
+  console.log("English only — Korean is the source, so this is backwards:");
+  for (const s of needsKorean) console.log(`  content/${s}.ko.mdx`);
+}
+process.exitCode = 1;

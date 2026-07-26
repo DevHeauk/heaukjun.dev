@@ -8,21 +8,23 @@ export default function Home() {
   return (
     <main>
       <h1>HeaukJun Yoo</h1>
+      <p>I&apos;m a full-stack engineer in Seoul.</p>
       <p>
-        I&apos;m a full-stack engineer in Seoul. I spent my first four years
-        writing C for network security systems — proxies, TLS interception,
-        traffic logging — then moved to backend and infrastructure, and more
-        recently to product work at smaller companies.
+        I started out writing C for network security appliances — a proxy
+        server that every packet of a company&apos;s traffic passed through.
+        For close to four years I worked down at that level, in Linux and
+        networks.
       </p>
       <p>
-        These days I work across the whole thing: data models and APIs, the
-        servers they run on, and the client on top. Lately that has included
-        the product decisions too — what to build, what to measure, and when to
+        Then I moved to startups and took on backend and infrastructure. Mostly
+        that meant keeping servers up while the app grew, but it kept
+        spreading: client features, then payments and ads. These days it
+        includes deciding what to build, which numbers to watch, and when to
         stop.
       </p>
       <p>
-        I write here to think things through — usually about something that
-        broke, and what I&apos;d do differently now.
+        I keep notes here on problems I ran into at work. Probably more about
+        the ones that went wrong than the ones that went well.
       </p>
 
       <h2>Work</h2>
