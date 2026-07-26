@@ -128,21 +128,54 @@ nav.site a:hover {
   text-decoration: none;
 }
 
-.post-list {
+.entry-list {
   list-style: none;
   padding: 0;
+  margin: 0 0 1.5rem;
 }
 
-.post-list li {
+.entry-list > li {
+  margin-bottom: 1.1rem;
+}
+
+.entry-head {
   display: flex;
   justify-content: space-between;
+  align-items: baseline;
   gap: 1rem;
-  margin-bottom: 0.75rem;
 }
 
-.post-list time {
+.entry-head time,
+.entry-head .muted {
   flex-shrink: 0;
+  font-size: 0.9rem;
   font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.entry-note {
+  margin: 0.15rem 0 0;
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+.year {
+  font-size: 0.9rem;
+  color: var(--muted);
+  margin: 2.5rem 0 0.9rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.year:first-of-type {
+  margin-top: 1.5rem;
+}
+
+@media (max-width: 34rem) {
+  .entry-head {
+    flex-direction: column;
+    gap: 0.1rem;
+  }
 }
 
 footer.site {
