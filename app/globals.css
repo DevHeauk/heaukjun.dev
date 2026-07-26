@@ -159,6 +159,17 @@ nav.site a:hover {
   color: var(--muted);
 }
 
+.post-meta {
+  font-size: 0.9rem;
+  color: var(--muted);
+  margin-top: -1rem;
+}
+
+main[lang="ko"] {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
 .year {
   font-size: 0.9rem;
   color: var(--muted);
