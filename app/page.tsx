@@ -8,11 +8,11 @@ export default function Home() {
     <main>
       <h1>HeaukJun Yoo</h1>
       <p>
-        I&apos;m a product engineer in Seoul. I spent four years on backend and
-        infrastructure, then four years building products full-stack — most
-        recently taking a declining product&apos;s revenue up 75% in six
-        months, and running the backend for a real-time voice app as it grew to
-        2 million users.
+        I&apos;m a product engineer in Seoul. Four years on backend and
+        infrastructure, then four years building products full-stack. I spent
+        most of that on a real-time voice app that grew to two million users —
+        running its backend and infrastructure, building client features, and
+        owning the ad revenue it ran on.
       </p>
       <p>
         I write about the parts that don&apos;t fit in a resume: what broke,
