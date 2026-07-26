@@ -11,7 +11,7 @@ export const workKo: Job[] = [
     company: "야타브",
     role: "풀스택 Dev Lead",
     period: "2025 — 현재",
-    note: "초기 스타트업에서 개발자 5명, 디자이너 1명과 함께 일합니다. AI 보안으로 피벗하면서 제품을 만들고 내보내고 확인하는 일을 반복하고 있습니다.",
+    note: "17명 규모 초기 스타트업에서 개발자 5명, 디자이너 1명으로 이뤄진 팀을 맡고 있습니다. AI 보안으로 피벗한 뒤로는 제품을 상품화하고 운영 수준까지 끌어올리는 작업에 집중하고 있습니다.",
   },
   {
     company: "레브잇",
@@ -38,7 +38,7 @@ export const work: Job[] = [
     company: "Yatav",
     role: "Full-stack Dev Lead",
     period: "2025 — now",
-    note: "Working with five engineers and a designer at an early-stage startup. We're pivoting into AI security, so it's been a loop of building, shipping, and finding out what holds.",
+    note: "I lead a team of five engineers and a designer at a 17-person startup. Since the pivot into AI security, my work has been turning the product into something sellable and operable.",
   },
   {
     company: "Levit",
