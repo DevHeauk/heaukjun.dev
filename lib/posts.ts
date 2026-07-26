@@ -10,8 +10,8 @@ export type Post = {
   date: string;
   summary?: string;
   content: string;
-  /** true when content/<slug>.ko.mdx exists */
-  hasKo: boolean;
+  /** true when the other-language file exists */
+  hasTranslation: boolean;
 };
 
 function read(file: string) {
@@ -21,21 +21,26 @@ function read(file: string) {
 
 function files(): string[] {
   if (!fs.existsSync(CONTENT_DIR)) return [];
-  return fs.readdirSync(CONTENT_DIR).filter((f) => /\.mdx?$/.test(f));
+  return fs
+    .readdirSync(CONTENT_DIR)
+    .filter((f) => /\.mdx?$/.test(f))
+    .filter((f) => !f.startsWith("_")); // _draft.mdx stays unpublished
 }
 
-/** English posts. Drafts (_prefix) and Korean translations (.ko) are excluded. */
-export function getPosts(): Post[] {
-  const all = files();
-  const koSlugs = new Set(
-    all
+function koSlugs(): Set<string> {
+  return new Set(
+    files()
       .filter((f) => /\.ko\.mdx?$/.test(f))
       .map((f) => f.replace(/\.ko\.mdx?$/, ""))
   );
+}
 
-  return all
+/** English posts, newest first. */
+export function getPosts(): Post[] {
+  const ko = koSlugs();
+
+  return files()
     .filter((f) => !/\.ko\.mdx?$/.test(f))
-    .filter((f) => !f.startsWith("_"))
     .map((file) => {
       const { data, content } = read(file);
       const slug = file.replace(/\.mdx?$/, "");
@@ -45,31 +50,43 @@ export function getPosts(): Post[] {
         date: data.date ?? "",
         summary: data.summary,
         content,
-        hasKo: koSlugs.has(slug),
+        hasTranslation: ko.has(slug),
       };
     })
     .sort((a, b) => (a.date < b.date ? 1 : -1));
+}
+
+/** Korean posts, newest first. Only posts that actually have a translation. */
+export function getKoPosts(): Post[] {
+  return getPosts()
+    .filter((p) => p.hasTranslation)
+    .map((english) => {
+      const file = files().find((f) =>
+        new RegExp(`^${english.slug}\\.ko\\.mdx?$`).test(f)
+      )!;
+      const { data, content } = read(file);
+      return {
+        slug: english.slug,
+        title: data.title ?? english.title,
+        date: english.date, // dates live on the English original
+        summary: data.summary,
+        content,
+        hasTranslation: true,
+      };
+    });
 }
 
 export function getPost(slug: string): Post | undefined {
   return getPosts().find((p) => p.slug === slug);
 }
 
-/** Korean translation of a post, if the author wrote one. */
 export function getKoPost(slug: string): Post | undefined {
-  const english = getPost(slug);
-  if (!english?.hasKo) return undefined;
+  return getKoPosts().find((p) => p.slug === slug);
+}
 
-  const file = files().find((f) => new RegExp(`^${slug}\\.ko\\.mdx?$`).test(f));
-  if (!file) return undefined;
-
-  const { data, content } = read(file);
-  return {
-    slug,
-    title: data.title ?? english.title,
-    date: english.date,
-    summary: data.summary,
-    content,
-    hasKo: true,
-  };
+/** Published English posts with no Korean version yet. Used by `npm run check`. */
+export function untranslated(): string[] {
+  return getPosts()
+    .filter((p) => !p.hasTranslation)
+    .map((p) => p.slug);
 }

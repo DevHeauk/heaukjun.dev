@@ -128,6 +128,10 @@ nav.site a:hover {
   text-decoration: none;
 }
 
+nav.site a.lang {
+  margin-left: auto;
+}
+
 .entry-list {
   list-style: none;
   padding: 0;

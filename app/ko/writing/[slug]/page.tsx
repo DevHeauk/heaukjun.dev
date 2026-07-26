@@ -1,12 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MDXRemote } from "next-mdx-remote/rsc";
-import { getKoPost, getPosts } from "@/lib/posts";
+import { getKoPost, getKoPosts } from "@/lib/posts";
 
 export function generateStaticParams() {
-  return getPosts()
-    .filter((post) => post.hasKo)
-    .map((post) => ({ slug: post.slug }));
+  return getKoPosts().map((post) => ({ slug: post.slug }));
 }
 
 export async function generateMetadata({
