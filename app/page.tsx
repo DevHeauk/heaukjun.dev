@@ -9,9 +9,16 @@ export default function Home() {
     <main>
       <h1>HeaukJun Yoo</h1>
       <p>
-        I&apos;m an engineer in Seoul. I spent my first four years writing C
-        for network security systems, then moved to backend and infrastructure,
-        and more recently to product work at smaller companies.
+        I&apos;m a full-stack engineer in Seoul. I spent my first four years
+        writing C for network security systems — proxies, TLS interception,
+        traffic logging — then moved to backend and infrastructure, and more
+        recently to product work at smaller companies.
+      </p>
+      <p>
+        These days I work across the whole thing: data models and APIs, the
+        servers they run on, and the client on top. Lately that has included
+        the product decisions too — what to build, what to measure, and when to
+        stop.
       </p>
       <p>
         I write here to think things through — usually about something that
