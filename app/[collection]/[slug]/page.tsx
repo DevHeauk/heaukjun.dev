@@ -41,15 +41,11 @@ export default async function Page({
   return (
     <main>
       <h1>{post.title}</h1>
-      <p className="post-meta">
-        <time dateTime={post.date}>{post.date}</time>
-        {post.hasTranslation && (
-          <>
-            {" · "}
-            <Link href={`/ko/${collection}/${post.slug}`}>한국어</Link>
-          </>
-        )}
-      </p>
+      {post.hasTranslation && (
+        <p className="post-meta">
+          <Link href={`/ko/${collection}/${post.slug}`}>한국어</Link>
+        </p>
+      )}
       <Toc headings={headings(post.content)} />
       <MDXRemote
         source={post.content}

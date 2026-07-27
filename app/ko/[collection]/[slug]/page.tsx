@@ -41,15 +41,11 @@ export default async function PageKo({
   return (
     <main lang="ko">
       <h1>{post.title}</h1>
-      <p className="post-meta">
-        <time dateTime={post.date}>{post.date}</time>
-        {post.hasTranslation && (
-          <>
-            {" · "}
-            <Link href={`/${collection}/${post.slug}`}>English</Link>
-          </>
-        )}
-      </p>
+      {post.hasTranslation && (
+        <p className="post-meta">
+          <Link href={`/${collection}/${post.slug}`}>English</Link>
+        </p>
+      )}
       <Toc headings={headings(post.content)} />
       <MDXRemote
         source={post.content}

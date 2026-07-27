@@ -32,7 +32,6 @@ export function CollectionPreview({
                   <Link href={`${prefix}/${collection}/${post.slug}`}>
                     {post.title}
                   </Link>
-                  <time dateTime={post.date}>{post.date}</time>
                 </div>
               </li>
             ))}
