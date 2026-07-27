@@ -1,8 +1,22 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { getKoPosts, type Post } from "@/lib/posts";
+import { getAll, type Collection, type Post } from "@/lib/posts";
+import { SECTIONS, isCollection } from "@/lib/sections";
 
-export const metadata: Metadata = { title: "글" };
+export function generateStaticParams() {
+  return Object.keys(SECTIONS).map((collection) => ({ collection }));
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ collection: string }>;
+}): Promise<Metadata> {
+  const { collection } = await params;
+  if (!isCollection(collection)) return {};
+  return { title: SECTIONS[collection].ko.title };
+}
 
 const fmt = new Intl.DateTimeFormat("ko-KR", {
   year: "numeric",
@@ -11,20 +25,28 @@ const fmt = new Intl.DateTimeFormat("ko-KR", {
   timeZone: "UTC",
 });
 
-export default function WritingKo() {
-  const posts = getKoPosts();
+export default async function IndexKo({
+  params,
+}: {
+  params: Promise<{ collection: string }>;
+}) {
+  const { collection } = await params;
+  if (!isCollection(collection)) notFound();
+
+  const section = SECTIONS[collection as Collection].ko;
+  const posts = getAll(collection as Collection, "ko");
 
   const byYear = posts.reduce<Record<string, Post[]>>((acc, post) => {
     const year = post.date.slice(0, 4) || "날짜 없음";
     (acc[year] ??= []).push(post);
     return acc;
   }, {});
-
   const years = Object.keys(byYear).sort((a, b) => (a < b ? 1 : -1));
 
   return (
     <main lang="ko">
-      <h1>글</h1>
+      <h1>{section.title}</h1>
+      <p className="muted section-intro">{section.blurb}</p>
       {posts.length === 0 ? (
         <p className="muted">아직 올린 글이 없습니다.</p>
       ) : (
@@ -35,7 +57,9 @@ export default function WritingKo() {
               {byYear[year].map((post) => (
                 <li key={post.slug}>
                   <div className="entry-head">
-                    <Link href={`/ko/writing/${post.slug}`}>{post.title}</Link>
+                    <Link href={`/ko/${collection}/${post.slug}`}>
+                      {post.title}
+                    </Link>
                     <time dateTime={post.date}>
                       {post.date ? fmt.format(new Date(post.date)) : ""}
                     </time>

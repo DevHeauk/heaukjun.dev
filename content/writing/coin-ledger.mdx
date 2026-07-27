@@ -1,0 +1,158 @@
+---
+title: "Our coin balances kept drifting"
+summary: "On choosing between a stored balance and summing the history every time, and the price that choice comes with. Atomic writes prevent the failures you know about; recomputation cleans up the ones you don't."
+---
+
+I was working on the webtoon service inside a commerce app. Users bought coins to unlock episodes, so coins were revenue.
+
+Support tickets saying "my coins disappeared" kept climbing. The problem surfaced when we added expiry to coins, but expiry wasn't the cause. It just made an existing problem visible.
+
+## Store the balance, or add it up every time
+
+There are broadly two ways to handle a coin balance.
+
+**Sum the history on every read.** You only record credits and debits, and whenever you need a balance you add them all up. There is exactly one truth, so nothing can disagree. In exchange, reads are O(n) and get slower as transactions pile up.
+
+**Store the balance separately.** Reads become O(1). In exchange you now have two truths, and you have to keep them pointing at the same number forever.
+
+The second one isn't a bad choice. Materializing a derived value is a legitimate performance decision. The problem is **taking that choice without paying for it**. Keeping a stored balance from separating from its history requires atomicity and a single write path, and our system had neither.
+
+## The balance and the history never checked each other
+
+One thing worth being precise about: it wasn't that we had no history. We had a balance and we had a history. The problem was that neither one verified the other.
+
+The balance was being incremented and decremented from all over. New features touched it directly. So did admin tools. The history just recorded whatever happened alongside. Nothing was wrapped in a transaction, so a scheduled job that failed halfway could move the balance and leave no history behind.
+
+Which meant that when a number was wrong, there was no way to tell where it went wrong. I never did find a single root cause.
+
+<TwoTruths />
+
+## The price is atomicity
+
+If you're going to store the balance, the update has to be atomic.
+
+The most common mistake is read, compute, write.
+
+```typescript
+const user = await users.findOne({ _id: userId }); // balance: 100
+await users.updateOne(
+  { _id: userId },
+  { $set: { balance: user.balance - 30 } }
+);
+```
+
+Two concurrent requests both read 100 and both write 70. Thirty should have come off twice; it comes off once. That's a lost update.
+
+Don't write back a value you read. Make the database do the arithmetic.
+
+```typescript
+await balances.updateOne({ userId }, { $inc: { balance: -30 } });
+```
+
+```sql
+UPDATE balances SET balance = balance - 30
+ WHERE user_id = ? AND balance >= 30;  -- check affected rows for success
+```
+
+## What the lock is actually doing
+
+`$inc` and `balance = balance - 30` are safe because the database takes an exclusive lock on that row. Any other transaction trying to modify the same row waits until the lock holder commits. Concurrent execution ends up behaving like sequential execution.
+
+You can also take the lock yourself.
+
+```sql
+BEGIN;
+SELECT balance FROM balances WHERE user_id = ? FOR UPDATE;  -- lock taken here
+-- validate and compute in the application
+UPDATE balances SET balance = ? WHERE user_id = ?;
+COMMIT;                                                     -- released here
+```
+
+`FOR UPDATE` is pessimistic locking: assume a conflict and block it up front. Optimistic locking does the opposite — don't block, verify afterwards.
+
+```sql
+UPDATE balances SET balance = ?, version = version + 1
+ WHERE user_id = ? AND version = ?;  -- 0 rows means someone beat you; retry
+```
+
+Pessimistic wins when contention is common, optimistic when it's rare. What each isolation level actually guarantees is [written up separately](/notes/isolation-levels). Something like a coin debit, which contends only on one user's own row, is short and local enough that a single atomic operation is the cheapest answer of all.
+
+**Transactions are for when more than one place has to change.** Inserting the history row and updating the balance are two writes. If the process dies between them you get exactly the state we were living in. Wrapping them means either both land or neither does.
+
+Two things to watch. Locks are held until commit, so never call an external API inside a transaction — every other request queues behind that round trip. And if you lock multiple rows, always lock them in the same order. Inconsistent ordering is how you get deadlocks.
+
+## One way in
+
+Atomic operations and transactions don't help if ten different places can still touch the balance. To enforce an invariant, there has to be one place to enforce it.
+
+```typescript
+async function applyCoinChange(p: {
+  userId: string;
+  amount: number;
+  reason: string;
+  idempotencyKey: string;
+}) {
+  const dup = await history.findOne({ idempotencyKey: p.idempotencyKey });
+  if (dup) return dup;
+
+  await history.insertOne({ ...p, createdAt: new Date() });
+
+  return balances.findOneAndUpdate(
+    { userId: p.userId },
+    { $inc: { balance: p.amount } },
+    { upsert: true, returnDocument: "after" }
+  );
+}
+```
+
+The idempotency key needs a unique index. Without one, two requests carrying the same key at the same time both get through.
+
+## Recomputation is the backup, not the mechanism
+
+Everything above is the correct answer. But at the time I still hadn't found the cause. If you apply the correct answer without knowing where the leak is, the already-broken data stays broken and any path you haven't found yet stays invisible.
+
+So I made the system check the balance against the history and recompute when they disagreed.
+
+This is not a substitute for atomicity. It's a **backup for the bugs you don't know about**. Atomic operations and transactions prevent the failures you understand; recomputation cleans up the ones you don't.
+
+And one thing matters more than the correction itself: **every correction has to raise an alert.** If it silently fixes things, the system looks healthy and the bug lives forever. Recording which user drifted, when, and by how much turns the safety net into a map of the paths you're still missing. The history is visible to users too, so a ticket like "I did this but it's not in my history" became the same kind of signal.
+
+The idea is what a Kubernetes controller does: keep comparing desired state to actual state and converge. Coins were a small version of that.
+
+The limit is real, though. This only catches the balance disagreeing with the history. If a history record goes missing, you get a stable, confidently wrong number.
+
+## The recompute can convict an innocent balance
+
+It reads the stored balance, sums the history, and compares. If those two reads see different moments, a perfectly valid commit that landed in between makes a correct balance look wrong. You end up correcting something that didn't need correcting.
+
+<SnapshotRace />
+
+Both reads have to happen inside one consistent snapshot. At [REPEATABLE READ](/notes/isolation-levels) or above, the transaction keeps seeing the snapshot from when it began, so both reads observe the same moment. Summing is a multi-row scan to begin with, so without a snapshot even the sum is unstable.
+
+## I settled the existing gaps in the user's favor
+
+There was already broken data sitting there, and I had to pick a direction.
+
+If the balance was lower than the history, I topped it up. If it was higher, I left it and wrote a correcting record. Either way, no user lost coins. Trust costs more than a handful of coins. Most of it was reconciled quietly, and the users who had filed tickets were compensated separately.
+
+Tickets about this went to zero.
+
+## Me, a few years earlier
+
+This is the part I actually wanted to write.
+
+At my first startup, I decided history-based recomputation was too slow and switched to storing and editing the result directly. Bugs and support tickets I hadn't anticipated followed.
+
+Years later I inherited the same structure, built by someone else. This time I could see the trap.
+
+So I don't think materializing a result is a bad call. It's a legitimate performance decision. The problem is taking the shortcut without the machinery that keeps it honest: atomic updates, a single write path, a recompute to fall back on. Without those, there's nothing stopping your two truths from separating.
+
+## What I'd do now
+
+Three layers. Each one catches a different failure.
+
+Atomic operations and transactions keep the balance correct at all times, which keeps reads O(1). Recomputation moves to the background as a safety net, and every correction it makes raises an alert. Snapshots make that recomputation cheap — store the balance at a point in time and replay only the events after it.
+
+Transactions alone leave you exposed to bugs you don't know about. Recomputation alone leaves reads slow. You want both.
+
+At the time, my part ended at stabilizing it and getting observability. The next step was collapsing the write path completely and wrapping it in a transaction.

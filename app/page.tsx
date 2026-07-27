@@ -1,10 +1,7 @@
-import Link from "next/link";
-import { getPosts } from "@/lib/posts";
 import { work } from "@/lib/work";
+import { CollectionPreview, Elsewhere } from "@/components/home";
 
 export default function Home() {
-  const posts = getPosts().slice(0, 5);
-
   return (
     <main>
       <h1>HeaukJun Yoo</h1>
@@ -44,48 +41,9 @@ export default function Home() {
         ))}
       </ul>
 
-      <h2>Writing</h2>
-      {posts.length === 0 ? (
-        <p className="muted">Nothing published yet.</p>
-      ) : (
-        <>
-          <ul className="entry-list">
-            {posts.map((post) => (
-              <li key={post.slug}>
-                <div className="entry-head">
-                  <Link href={`/writing/${post.slug}`}>{post.title}</Link>
-                  <time dateTime={post.date}>{post.date}</time>
-                </div>
-              </li>
-            ))}
-          </ul>
-          <p>
-            <Link href="/writing">All writing →</Link>
-          </p>
-        </>
-      )}
-
-      <h2>Elsewhere</h2>
-      <ul className="entry-list">
-        <li>
-          <div className="entry-head">
-            <a href="https://github.com/DevHeauk">GitHub</a>
-            <span className="muted">DevHeauk</span>
-          </div>
-        </li>
-        <li>
-          <div className="entry-head">
-            <a href="https://www.linkedin.com/in/heaukjun-yoo">LinkedIn</a>
-            <span className="muted">heaukjun-yoo</span>
-          </div>
-        </li>
-        <li>
-          <div className="entry-head">
-            <a href="mailto:tianfla24@gmail.com">Email</a>
-            <span className="muted">tianfla24@gmail.com</span>
-          </div>
-        </li>
-      </ul>
+      <CollectionPreview collection="writing" lang="en" />
+      <CollectionPreview collection="notes" lang="en" limit={4} />
+      <Elsewhere lang="en" />
     </main>
   );
 }

@@ -2,15 +2,20 @@ import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
 
-const CONTENT_DIR = path.join(process.cwd(), "content");
-
 /**
  * Korean is the source language.
- *   content/<slug>.ko.mdx  — Korean, written first, carries the date
- *   content/<slug>.mdx     — English translation
+ *   content/<collection>/<slug>.ko.mdx  — Korean, written first, carries the date
+ *   content/<collection>/<slug>.mdx     — English translation
  * A file starting with _ is a draft and is never published.
+ *
+ * writing — posts about something that happened at work
+ * notes   — concept write-ups the posts link to
  */
+export type Collection = "writing" | "notes";
+export type Lang = "ko" | "en";
+
 export type Post = {
+  collection: Collection;
   slug: string;
   title: string;
   date: string;
@@ -20,48 +25,57 @@ export type Post = {
   hasTranslation: boolean;
 };
 
-function files(): string[] {
-  if (!fs.existsSync(CONTENT_DIR)) return [];
+function dir(collection: Collection) {
+  return path.join(process.cwd(), "content", collection);
+}
+
+function files(collection: Collection): string[] {
+  const d = dir(collection);
+  if (!fs.existsSync(d)) return [];
   return fs
-    .readdirSync(CONTENT_DIR)
+    .readdirSync(d)
     .filter((f) => /\.mdx?$/.test(f))
     .filter((f) => !f.startsWith("_"));
 }
 
-function find(slug: string, lang: "ko" | "en"): string | undefined {
+function find(collection: Collection, slug: string, lang: Lang) {
   const pattern =
     lang === "ko"
       ? new RegExp(`^${slug}\\.ko\\.mdx?$`)
       : new RegExp(`^${slug}\\.mdx?$`);
-  return files().find((f) => pattern.test(f));
+  return files(collection).find((f) => pattern.test(f));
 }
 
-function load(file: string) {
-  const raw = fs.readFileSync(path.join(CONTENT_DIR, file), "utf8");
+function load(collection: Collection, file: string) {
+  const raw = fs.readFileSync(path.join(dir(collection), file), "utf8");
   return matter(raw);
 }
 
-export function slugs(lang: "ko" | "en"): string[] {
-  return files()
+export function slugs(collection: Collection, lang: Lang): string[] {
+  return files(collection)
     .filter((f) =>
       lang === "ko" ? /\.ko\.mdx?$/.test(f) : !/\.ko\.mdx?$/.test(f)
     )
     .map((f) => f.replace(/(\.ko)?\.mdx?$/, ""));
 }
 
-function build(slug: string, lang: "ko" | "en"): Post | undefined {
-  const file = find(slug, lang);
+function build(
+  collection: Collection,
+  slug: string,
+  lang: Lang
+): Post | undefined {
+  const file = find(collection, slug, lang);
   if (!file) return undefined;
 
-  const { data, content } = load(file);
-  const other = lang === "ko" ? "en" : "ko";
-  const otherFile = find(slug, other);
+  const { data, content } = load(collection, file);
+  const otherFile = find(collection, slug, lang === "ko" ? "en" : "ko");
 
   // Dates live on the Korean original; the translation borrows it.
   let date: string = data.date ?? "";
-  if (!date && otherFile) date = load(otherFile).data.date ?? "";
+  if (!date && otherFile) date = load(collection, otherFile).data.date ?? "";
 
   return {
+    collection,
     slug,
     title: data.title ?? slug,
     date,
@@ -71,15 +85,13 @@ function build(slug: string, lang: "ko" | "en"): Post | undefined {
   };
 }
 
-function sorted(lang: "ko" | "en"): Post[] {
-  return slugs(lang)
-    .map((slug) => build(slug, lang))
+export function getAll(collection: Collection, lang: Lang): Post[] {
+  return slugs(collection, lang)
+    .map((slug) => build(collection, slug, lang))
     .filter((p): p is Post => Boolean(p))
     .sort((a, b) => (a.date < b.date ? 1 : -1));
 }
 
-export const getPosts = () => sorted("en");
-export const getKoPosts = () => sorted("ko");
-
-export const getPost = (slug: string) => build(slug, "en");
-export const getKoPost = (slug: string) => build(slug, "ko");
+export function getOne(collection: Collection, slug: string, lang: Lang) {
+  return build(collection, slug, lang);
+}

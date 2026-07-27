@@ -1,7 +1,6 @@
-import Link from "next/link";
 import type { Metadata } from "next";
-import { getKoPosts } from "@/lib/posts";
 import { workKo } from "@/lib/work";
+import { CollectionPreview, Elsewhere } from "@/components/home";
 
 export const metadata: Metadata = {
   title: "유혁준",
@@ -10,8 +9,6 @@ export const metadata: Metadata = {
 };
 
 export default function HomeKo() {
-  const posts = getKoPosts().slice(0, 5);
-
   return (
     <main lang="ko">
       <h1>유혁준</h1>
@@ -51,48 +48,9 @@ export default function HomeKo() {
         ))}
       </ul>
 
-      <h2>글</h2>
-      {posts.length === 0 ? (
-        <p className="muted">아직 올린 글이 없습니다.</p>
-      ) : (
-        <>
-          <ul className="entry-list">
-            {posts.map((post) => (
-              <li key={post.slug}>
-                <div className="entry-head">
-                  <Link href={`/ko/writing/${post.slug}`}>{post.title}</Link>
-                  <time dateTime={post.date}>{post.date}</time>
-                </div>
-              </li>
-            ))}
-          </ul>
-          <p>
-            <Link href="/ko/writing">글 전체 보기 →</Link>
-          </p>
-        </>
-      )}
-
-      <h2>링크</h2>
-      <ul className="entry-list">
-        <li>
-          <div className="entry-head">
-            <a href="https://github.com/DevHeauk">GitHub</a>
-            <span className="muted">DevHeauk</span>
-          </div>
-        </li>
-        <li>
-          <div className="entry-head">
-            <a href="https://www.linkedin.com/in/heaukjun-yoo">LinkedIn</a>
-            <span className="muted">heaukjun-yoo</span>
-          </div>
-        </li>
-        <li>
-          <div className="entry-head">
-            <a href="mailto:tianfla24@gmail.com">이메일</a>
-            <span className="muted">tianfla24@gmail.com</span>
-          </div>
-        </li>
-      </ul>
+      <CollectionPreview collection="writing" lang="ko" />
+      <CollectionPreview collection="notes" lang="ko" limit={4} />
+      <Elsewhere lang="ko" />
     </main>
   );
 }

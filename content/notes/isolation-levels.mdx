@@ -1,0 +1,103 @@
+---
+title: "Transaction isolation levels"
+summary: "From READ UNCOMMITTED to SERIALIZABLE — what each level allows, what it prevents, with examples."
+---
+
+When several transactions touch the same data at once, the isolation level decides how much they're kept apart.
+
+Turn it up and you get correctness at the cost of speed. Turn it down and you get speed at the cost of seeing values that never should have been visible. So the answer to "why not just always use the strictest one" is "because concurrency dies".
+
+## First, what can actually go wrong
+
+Isolation levels are defined by which of these three they allow. The names are worth learning first.
+
+### Dirty read — reading something that was never committed
+
+```
+T1: BEGIN
+T1: UPDATE accounts SET balance = 0 WHERE id = 1;   -- not committed yet
+T2: SELECT balance FROM accounts WHERE id = 1;      -- reads 0
+T1: ROLLBACK                                        -- that never happened
+```
+
+T2 read a value that **never existed**. Any decision made from it has no basis.
+
+### Non-repeatable read — same row, read twice, different values
+
+```
+T1: SELECT balance FROM accounts WHERE id = 1;   -- 100
+T2: UPDATE accounts SET balance = 70 WHERE id = 1; COMMIT;
+T1: SELECT balance FROM accounts WHERE id = 1;   -- 70
+```
+
+T1 isn't finished, but the world moved under it. If it was computing from that first read, the result no longer adds up.
+
+### Phantom read — same condition, read twice, different number of rows
+
+```
+T1: SELECT count(*) FROM orders WHERE user_id = 1;   -- 3
+T2: INSERT INTO orders (user_id) VALUES (1); COMMIT;
+T1: SELECT count(*) FROM orders WHERE user_id = 1;   -- 4
+```
+
+No row changed — **a new row appeared**. A rule like "give a coupon if they have three orders or fewer" breaks right here.
+
+## The four levels
+
+| Isolation level | Dirty read | Non-repeatable read | Phantom read |
+|---|---|---|---|
+| READ UNCOMMITTED | allowed | allowed | allowed |
+| READ COMMITTED | prevented | allowed | allowed |
+| REPEATABLE READ | prevented | prevented | allowed (see below) |
+| SERIALIZABLE | prevented | prevented | prevented |
+
+### READ UNCOMMITTED
+
+You see other transactions' uncommitted values. If they roll back, what you read never existed. There is **essentially no reason to use this**. PostgreSQL treats a request for it as READ COMMITTED.
+
+### READ COMMITTED
+
+You only see committed values. But **each statement gets its own fresh snapshot**, so running the same SELECT twice inside one transaction can return different results.
+
+It's the default in PostgreSQL and Oracle. Most web requests are short and simple enough that this is the right choice.
+
+### REPEATABLE READ
+
+**The transaction keeps seeing the snapshot from the moment it began.** Whatever anyone else commits in the meantime is invisible to it. The same SELECT returns the same thing however many times you run it.
+
+It's the default in MySQL (InnoDB). Anything that reads several times to reach one conclusion — recomputing a balance, reconciliation, reporting — needs at least this.
+
+The table says phantoms are allowed, but that's the standard's definition. **MySQL's InnoDB prevents most phantoms too, using next-key locks.** Reading the table alone and concluding "MySQL has phantom reads" gets it wrong.
+
+### SERIALIZABLE
+
+Guarantees the result is the same as if the transactions had run **one after another**. Safest and most expensive.
+
+PostgreSQL implements it through conflict detection rather than locking (SSI), which means instead of waiting, it **throws an error and expects you to retry**. Without retry logic in the application, that just looks like a failure.
+
+## So which one
+
+Leave most requests on the default. Raising the isolation level is worth it specifically for **work that reads several times to reach a single judgment**.
+
+- Single-row read or update → the default (READ COMMITTED / REPEATABLE READ)
+- Balance recomputation, reconciliation, aggregate reports → REPEATABLE READ or above
+- Decrementing stock, reserving a seat — anything that checks then writes → SERIALIZABLE, or more often **an atomic operation or an explicit lock**
+
+That last one matters. Raising the isolation level isn't the only answer. A single conditional atomic update is often cheaper and clearer.
+
+```sql
+UPDATE seats SET taken = 1
+ WHERE id = ? AND taken = 0;   -- zero rows affected means someone got there first
+```
+
+## Common traps
+
+**Isolation levels only guarantee read consistency.** "The value I read won't change" and "nobody else can write until I do" are different promises. For the second one you need `SELECT ... FOR UPDATE` or a version-based conditional update.
+
+**Higher isolation holds locks longer.** Call an external API inside a transaction and every other request queues behind that round trip.
+
+**The same name behaves differently across databases.** MySQL's REPEATABLE READ and PostgreSQL's REPEATABLE READ differ in phantom handling and in what happens on conflict. Judge by **the docs for the database you're actually using**, not by the name.
+
+---
+
+In [Our coin balances kept drifting](/writing/coin-ledger), the recompute convicting an innocent balance lands exactly here. Reading the stored balance and summing the history at two different moments makes a correct value look wrong. Both reads have to sit inside the same snapshot, which is why it needs at least REPEATABLE READ.
