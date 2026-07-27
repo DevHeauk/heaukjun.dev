@@ -17,10 +17,11 @@ export default function Home() {
       </p>
       <p>
         Then I moved to startups and took on backend and infrastructure. Mostly
-        that meant keeping servers up while the app grew, but it kept
-        spreading: client features, then payments and ads. These days it
-        includes deciding what to build, which numbers to watch, and when to
-        stop.
+        that meant keeping servers up while the app grew, but I ended up
+        building a lot of client features too. Once I was wiring in payments
+        and ads, I started building with the business in view — watching the
+        revenue numbers and deciding what to build next off them. These days
+        that extends to which numbers to watch, and when to stop.
       </p>
       <p>
         I keep notes here on problems I ran into at work. Probably more about
