@@ -1,0 +1,81 @@
+---
+title: "Connections aren't free"
+summary: "Why a connection is a resource rather than a pipe, why an application pool isn't enough on its own, and what RDS Proxy actually solves."
+---
+
+It's easy to think of a connection as a pipe to the database. If it were a pipe, more would be better. In practice it goes the other way — past a point, adding connections makes the database slower.
+
+A connection isn't a pipe. It's a **resource**.
+
+## What comes attached to one connection
+
+In MySQL terms, each connection drags along:
+
+- **A thread.** It's a thread-per-connection model, so more connections means more threads for the OS to schedule.
+- **Memory buffers.** Sort buffer, join buffer, network buffer, thread stack — per connection. Depending on configuration that runs to megabytes each.
+
+At hundreds or thousands of connections those costs add up, and the database starts spending memory and CPU **managing connections** instead of running queries. Context switching goes up and lock contention goes with it.
+
+That's why pool size has a right answer rather than a bigger-is-better answer. Throughput doesn't climb with the pool, and past some point it falls. It's why HikariCP's documentation recommends numbers derived from core count, which are smaller than most people expect.
+
+## An application pool isn't enough
+
+Your application already has a connection pool. The catch is that **it's per instance**.
+
+One instance holding a pool of 100 is holding 100 real database connections. Six instances is 600. If the database's `max_connections` is 500, everything past that is **rejected** — not queued, hard failure.
+
+<PoolCap />
+
+An application pool only manages waiting inside its own instance. That instances collectively exceed the database's limit is something it can neither see nor prevent. **There's no shared queue.**
+
+## What RDS Proxy does
+
+Put a proxy between the application and the database and the shape changes. Applications connect generously to the proxy, and **the proxy holds a small number of real database connections and hands them around**. That's connection multiplexing.
+
+<Multiplexing />
+
+A thousand application-side connections can sit on top of fifty real ones. And when those are all busy, the proxy **queues instead of rejecting**. Connections get handed out as they're returned, and requests that wait too long time out. Compare that with connecting directly, where exceeding the limit fails immediately.
+
+## "Isn't that just making people wait?"
+
+Looking only at the queue, it seems that way. The real benefits are elsewhere.
+
+**It keeps the database in its healthy range.** This is the big one. With a ceiling on connections, the database stays where it runs efficiently, and you avoid the case where a connection flood drags the whole thing down or kills it. That protects **not just the requests that had to wait, but every query that was running fine already**. The benefit lands on the people who never queued.
+
+**It keeps connections warm.** Doing a TCP connect, a TLS handshake, and authentication on every request throws away tens of milliseconds each time. Reuse removes it.
+
+**Failover gets softer.** When the database is replaced, the proxy holds the application's connections and reconnects behind them, so fewer errors reach the application. AWS says this cuts failover time by up to 66%.
+
+**It decouples instance count from connection count.** Autoscale to as many instances as you like; the number the database sees stays flat.
+
+## Especially on serverless
+
+Lambda scales to hundreds or thousands of execution environments the moment traffic arrives. Each one is isolated and short-lived. **There's no way to share a connection pool.**
+
+Point that at a traditional database and connections explode while every invocation pays the handshake cost again. RDS Proxy exists for exactly this, and it's the pairing AWS leads with.
+
+## What it doesn't fix
+
+**Query speed.** The proxy addresses how many connections exist. If queries are slow and hold connections for a long time, all you get is a longer queue and eventually timeouts. Indexes and query work are a separate job.
+
+**Watch for pinning.** Open a transaction or use session state — session variables, temporary tables — and that connection gets pinned to the request. While it's pinned it can't be handed to anyone else, so multiplexing efficiency drops. If you add a proxy and the connection count doesn't fall as much as expected, look here first.
+
+## ProxySQL goes further
+
+RDS Proxy is a managed service focused on absorbing connections. ProxySQL is open source and covers more ground.
+
+It reads queries and **routes reads and writes automatically** — `SELECT` to a replica, writes to the primary. That's the split people usually hand-code in the application, done at the proxy instead. It also does query caching, rewriting, and load balancing.
+
+The trade is that you operate it yourself. More capability for more maintenance.
+
+## When to use it
+
+**Worth it** when connections are genuinely the bottleneck: serverless, aggressive autoscaling, spiky traffic, frequent failovers.
+
+**Not worth it** when instance count is fixed on long-running servers and the pool is already tuned. The extra hop doesn't earn its place.
+
+The test is one question: **is what hurts right now the number of connections, or the speed of the queries?** If it's the second, a proxy changes nothing.
+
+---
+
+[Every night at ten, the service got slow](/writing/pool-exhaustion) is exactly this subject from the other side. In that case the pool drained because missing indexes made queries slow — not something a proxy would have fixed, and I didn't use one.

@@ -55,6 +55,17 @@ const copy = {
     sumHistory: "히스토리 합산",
     verdict: "멀쩡한 값을 불일치로 판정",
     time: "시간",
+    poolCap: "앱마다 자기 풀을 쥐고 있어서, 합치면 DB 한계를 넘습니다",
+    proxyShare: "프록시가 진짜 커넥션 몇 개를 붙잡고 돌려씁니다",
+    app: "앱",
+    pool: "풀 100",
+    dbMax: "MySQL  max=500",
+    over: "600개 요청 → 100개 즉시 거절",
+    proxy: "RDS Proxy  공용 50",
+    realConn: "실제 커넥션 50",
+    queued: "넘치면 대기열",
+    chain: "느린 쿼리 하나가 서비스 전체를 세우는 경로",
+    chainSteps: ["인덱스 없음", "풀스캔", "커넥션 오래 점유", "풀 고갈", "전체 지연"],
   },
   en: {
     twoTruths: "Two truths drifting apart, and the same thing collapsed into one",
@@ -74,6 +85,17 @@ const copy = {
     sumHistory: "sum history",
     verdict: "correct value flagged as a mismatch",
     time: "time",
+    poolCap: "Each app holds its own pool, and together they exceed the database's limit",
+    proxyShare: "The proxy holds a few real connections and hands them around",
+    app: "app",
+    pool: "pool 100",
+    dbMax: "MySQL  max=500",
+    over: "600 wanted → 100 rejected outright",
+    proxy: "RDS Proxy  shared 50",
+    realConn: "50 real connections",
+    queued: "overflow queues",
+    chain: "How one slow query stalls the whole service",
+    chainSteps: ["no index", "full scan", "connection held", "pool drained", "everything waits"],
   },
 } as const;
 
@@ -182,9 +204,120 @@ function SnapshotRace({ lang }: { lang: Lang }) {
   );
 }
 
+
+function PoolCap({ lang }: { lang: Lang }) {
+  const t = copy[lang];
+  const apps = [0, 1, 2, 3, 4, 5];
+  return (
+    <Figure caption={t.poolCap}>
+      <svg viewBox="0 0 620 250" role="img" aria-label={t.poolCap}>
+        <Arrowhead />
+        {apps.map((i) => {
+          const y = 20 + i * 34;
+          const rejected = i >= 5;
+          return (
+            <g key={i}>
+              <rect x="0" y={y} width="150" height="24" rx="4"
+                className={rejected ? "d-box d-warn" : "d-box"} />
+              <text x="75" y={y + 16} className="d-text d-mid d-sm">
+                {t.app}
+                {i + 1} · {t.pool}
+              </text>
+              <path d={`M150 ${y + 12} L300 ${rejected ? 150 : 120}`}
+                className={rejected ? "d-line d-dash d-arrow" : "d-line d-arrow"} />
+            </g>
+          );
+        })}
+        <rect x="304" y="96" width="180" height="48" rx="4" className="d-box" />
+        <text x="394" y="125" className="d-text d-mid d-mono">
+          {t.dbMax}
+        </text>
+        <text x="304" y="176" className="d-text d-warn-text d-sm">
+          {t.over}
+        </text>
+      </svg>
+    </Figure>
+  );
+}
+
+function Multiplexing({ lang }: { lang: Lang }) {
+  const t = copy[lang];
+  const apps = [0, 1, 2, 3];
+  return (
+    <Figure caption={t.proxyShare}>
+      <svg viewBox="0 0 620 200" role="img" aria-label={t.proxyShare}>
+        <Arrowhead />
+        {apps.map((i) => {
+          const y = 24 + i * 38;
+          return (
+            <g key={i}>
+              <rect x="0" y={y} width="118" height="24" rx="4" className="d-box" />
+              <text x="59" y={y + 16} className="d-text d-mid d-sm">
+                {t.app}
+                {i + 1}
+              </text>
+              <path d={`M118 ${y + 12} L214 100`} className="d-line d-arrow" />
+            </g>
+          );
+        })}
+        <rect x="218" y="76" width="164" height="48" rx="4" className="d-box d-ok" />
+        <text x="300" y="105" className="d-text d-mid d-mono">
+          {t.proxy}
+        </text>
+        <path d="M382 100 L446 100" className="d-line d-arrow" />
+        <text x="414" y="90" className="d-text d-muted d-mid d-sm">
+          {t.realConn}
+        </text>
+        <rect x="450" y="76" width="150" height="48" rx="4" className="d-box" />
+        <text x="525" y="105" className="d-text d-mid d-mono">
+          MySQL
+        </text>
+        <text x="218" y="148" className="d-text d-muted d-sm">
+          {t.queued}
+        </text>
+      </svg>
+    </Figure>
+  );
+}
+
+
+function Chain({ lang }: { lang: Lang }) {
+  const t = copy[lang];
+  const steps = t.chainSteps;
+  const w = 118;
+  const gap = 8;
+  return (
+    <Figure caption={t.chain}>
+      <svg viewBox="0 0 620 90" role="img" aria-label={t.chain}>
+        <Arrowhead />
+        {steps.map((label, i) => {
+          const x = i * (w + gap);
+          const last = i === steps.length - 1;
+          return (
+            <g key={label}>
+              <rect x={x} y="24" width={w} height="34" rx="4"
+                className={last ? "d-box d-warn" : "d-box"} />
+              <text x={x + w / 2} y="45"
+                className={`d-text d-mid d-sm ${last ? "d-warn-text" : ""}`}>
+                {label}
+              </text>
+              {!last && (
+                <path d={`M${x + w} 41 L${x + w + gap - 2} 41`} className="d-line d-arrow" />
+              )}
+            </g>
+          );
+        })}
+      </svg>
+    </Figure>
+  );
+}
+
 export function mdxComponents(lang: Lang) {
   return {
     TwoTruths: () => <TwoTruths lang={lang} />,
     SnapshotRace: () => <SnapshotRace lang={lang} />,
+    PoolCap: () => <PoolCap lang={lang} />,
+    Multiplexing: () => <Multiplexing lang={lang} />,
+    Chain: () => <Chain lang={lang} />,
   };
 }

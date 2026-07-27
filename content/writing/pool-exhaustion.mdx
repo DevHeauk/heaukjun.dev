@@ -1,0 +1,72 @@
+---
+title: "Every night at ten, the service got slow"
+summary: "A drained connection pool was the symptom, not the cause. The chain that started with a missing index, and how I found the queries the dashboard couldn't see."
+---
+
+I ran the backend for a voice app with two million users. A lot of them were overseas, so our peak ran from 10pm to 2am Korean time.
+
+In that window the whole service would intermittently slow down. Not one feature — everything. The metrics showed the database connection pool sitting empty.
+
+## A drained pool is a symptom
+
+A connection pool is a set of connections requests borrow from. A request comes in, takes a connection, runs its query, gives it back.
+
+Which means **a slow query holds a connection hostage**. It never comes back, the pool dries up, and new requests queue waiting for one. From that point on, requests that have nothing to do with the slow query are slow too.
+
+<Chain />
+
+The empty pool was the end of the chain. The start was somewhere else.
+
+## It was the indexes
+
+The most common cause was a missing index. Engineers kept shipping features with new tables and columns, and the lookup conditions kept going out without an index behind them.
+
+Without an index you get a full scan. It doesn't show while the table is small, and then it shows once the table has grown and traffic piles up. That's why it only broke at peak.
+
+## Rank by slow times frequent
+
+I started with RDS Performance Insights, but I didn't just work down its list of top queries in order.
+
+I ranked by **how much total database time a query was responsible for**. A query that takes three seconds but runs ten times a day matters far less than a 200ms one running hundreds of times a second. You have to multiply duration by frequency before you can see the real load.
+
+Then I opened each one with `EXPLAIN`. What you're looking for is simple. `type: ALL` is a full scan. An empty `key` means no index was used. And if `rows` scanned is wildly larger than the rows actually returned, the condition isn't using the index properly.
+
+From there it was adding indexes or redesigning the query. Repeated lookups that didn't need fresh data went into Redis.
+
+## Be careful moving reads to a replica
+
+I moved part of the read load to a read replica — but not all of it.
+
+Replicas lag. Send a path that reads something the user just wrote to a replica, and they'll see a screen that doesn't reflect what they just did. **Reads that needed to be current stayed on the primary.** Deciding which reads could tolerate lag was the actual work here.
+
+## The queries the dashboard can't see
+
+Performance Insights is good at frequent queries, because it aggregates. Which also means **a query that spikes once, or one that's quietly slow, never surfaces.** It gets buried in the average.
+
+So I built it myself. I logged response time and response size, and wired up slow-query alerts above a threshold.
+
+Logging the size turned out to matter. Some queries are fast but haul back far more than they need. That never shows up as database time, but it eats memory and network, and it makes the response slow anyway.
+
+That's how I found and fixed several of them in production. When a tool has a blind spot, the only way through it is building something that can see into it.
+
+## Growing the pool makes it worse
+
+When the pool runs dry, growing the pool feels like the obvious fix. It's the opposite.
+
+A connection isn't a pipe, it's a **resource**. MySQL attaches a thread and a set of buffers to each one. At hundreds or thousands of connections, the database spends its time scheduling threads and switching context instead of running queries, and lock contention climbs with it.
+
+So pools have a right size, and bigger isn't better. **The real fix is making queries fast enough that connections come back quickly.** I wrote up the details in [Connections aren't free](/notes/connection-pooling).
+
+## Where it landed
+
+Database CPU went from 40% to 18%. Utilization dropped from around 50% to under 20%, and the pool stopped draining at peak. All of it shipped without downtime.
+
+## What I'd do now
+
+Three things differently.
+
+**Fixing the process is the biggest lever.** Working through queries one at a time cleared what had already accumulated; it didn't stop more from accumulating. An index check in migrations and pull requests would have prevented the whole thing. The root cause wasn't technical, it was how we worked.
+
+**Put a layer in front that absorbs connections.** RDS Proxy or ProxySQL keeps the real connection count flat no matter how many app instances there are. It's the textbook answer for pools draining under spiky peaks, and I never evaluated it at the time.
+
+**Cover the blind spot with tooling instead of by hand.** Logging response times myself was the right call then, but an APM would have caught the same things automatically through per-request tracing. Performance Insights is the database's view and an APM is the application's; neither replaces the other.
