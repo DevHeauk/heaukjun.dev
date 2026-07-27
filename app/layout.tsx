@@ -3,12 +3,22 @@ import Nav from "./nav";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://heaukjun.com"),
   title: {
     default: "HeaukJun Yoo",
     template: "%s · HeaukJun Yoo",
   },
   description:
-    "Product engineer in Seoul. Four years on backend and infrastructure, then four years building products full-stack.",
+    "Full-stack engineer in Seoul. Network security in C, then backend and infrastructure, and now product work.",
+  alternates: {
+    canonical: "/",
+    languages: { en: "/", ko: "/ko" },
+  },
+  openGraph: {
+    type: "website",
+    siteName: "HeaukJun Yoo",
+    url: "https://heaukjun.com",
+  },
 };
 
 export default function RootLayout({
