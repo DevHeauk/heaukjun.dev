@@ -27,9 +27,9 @@ export const workKo: Job[] = [
   },
   {
     company: "모니터랩",
-    role: "서버 개발자",
+    role: "엔진 백엔드 개발자",
     period: "2018 — 2022",
-    note: "수천에서 1만 명 규모 기업의 트래픽이 전부 지나가는 프록시 보안 서버(SWG)를 C로 만들고 고쳤습니다.",
+    note: "온프레미스와 클라우드 프록시 보안 서버(SWG)를 C와 Go로 만들었습니다. 수천에서 1만 명 규모 기업의 트래픽이 전부 인라인으로 지나가는 서버였습니다.",
   },
 ];
 
@@ -54,8 +54,8 @@ export const work: Job[] = [
   },
   {
     company: "Monitorapp",
-    role: "Server Engineer",
+    role: "Backend Engineer, Security Engine",
     period: "2018 — 2022",
-    note: "Built and maintained a proxy security server (SWG) in C, carrying all traffic for companies of a few thousand to ten thousand people.",
+    note: "Built on-premise and cloud proxy security servers (SWG) in C and Go, carrying all traffic inline for companies of a few thousand to ten thousand people.",
   },
 ];

@@ -10,10 +10,10 @@ export default function Home() {
       <h1>HeaukJun Yoo</h1>
       <p>I&apos;m a full-stack engineer in Seoul.</p>
       <p>
-        I started out writing C for network security appliances — a proxy
-        server that every packet of a company&apos;s traffic passed through.
-        For close to four years I worked down at that level, in Linux and
-        networks.
+        I started my career at a network security company, on the engine
+        backend — on-premise and cloud proxy security servers written in C and
+        Go. All of a company&apos;s traffic passed inline through them, and for
+        close to four years I worked down at that level, in Linux and networks.
       </p>
       <p>
         Then I moved to startups and took on backend and infrastructure. Mostly
