@@ -56,30 +56,54 @@ UPDATE balances SET balance = balance - 30
 
 ## What the lock is actually doing
 
-`$inc` and `balance = balance - 30` are safe because the database takes an exclusive lock on that row. Any other transaction trying to modify the same row waits until the lock holder commits. Concurrent execution ends up behaving like sequential execution.
+Our system was MongoDB, where **single-document operations are atomic**. One `$inc` and there's no lock to take yourself. WiredTiger handles concurrency at the document level and retries write conflicts internally.
 
-You can also take the lock yourself.
+That also means MongoDB has no explicit row lock like a relational `SELECT ... FOR UPDATE`. **You put the condition in the filter instead.**
 
-```sql
-BEGIN;
-SELECT balance FROM balances WHERE user_id = ? FOR UPDATE;  -- lock taken here
--- validate and compute in the application
-UPDATE balances SET balance = ? WHERE user_id = ?;
-COMMIT;                                                     -- released here
+```javascript
+// Only debit if the balance covers it. If it doesn't, nothing happens.
+const res = await balances.findOneAndUpdate(
+  { userId, balance: { $gte: 30 } },
+  { $inc: { balance: -30 } },
+  { returnDocument: "after" }
+);
+if (!res) throw new Error("insufficient balance");
 ```
 
-`FOR UPDATE` is pessimistic locking: assume a conflict and block it up front. Optimistic locking does the opposite — don't block, verify afterwards.
+The filter and the update happen atomically in one operation. It plays the same role as `UPDATE ... WHERE balance >= 30` with an affected-rows check, and the idea underneath is compare-and-swap.
 
-```sql
-UPDATE balances SET balance = ?, version = version + 1
- WHERE user_id = ? AND version = ?;  -- 0 rows means someone beat you; retry
+Optimistic locking with a version field looks the same.
+
+```javascript
+const res = await docs.updateOne(
+  { _id, version: expected },
+  { $set: next, $inc: { version: 1 } }
+);
+if (res.matchedCount === 0) {
+  // Someone else got there first. Re-read and retry.
+}
 ```
 
-Pessimistic wins when contention is common, optimistic when it's rare. What each isolation level actually guarantees is [written up separately](/notes/isolation-levels). Something like a coin debit, which contends only on one user's own row, is short and local enough that a single atomic operation is the cheapest answer of all.
+**The problem is when more than one document has to change.** Inserting the history entry and updating the balance are two writes across two collections. Document-level atomicity doesn't reach that far. If the process dies between them you get exactly the state we were living in.
 
-**Transactions are for when more than one place has to change.** Inserting the history row and updating the balance are two writes. If the process dies between them you get exactly the state we were living in. Wrapping them means either both land or neither does.
+Since 4.0, MongoDB supports multi-document transactions. They need a replica set.
 
-Two things to watch. Locks are held until commit, so never call an external API inside a transaction — every other request queues behind that round trip. And if you lock multiple rows, always lock them in the same order. Inconsistent ordering is how you get deadlocks.
+```javascript
+await session.withTransaction(async () => {
+  await history.insertOne(entry, { session });
+  await balances.updateOne(
+    { userId },
+    { $inc: { balance: entry.amount } },
+    { session }
+  );
+});
+```
+
+`withTransaction` **re-runs the callback automatically** on a transient conflict, so the callback has to be safe to execute more than once. That's also why you don't call an external API inside it.
+
+The rest of the cautions match any relational database. A transaction holds resources until commit, so a long one makes everything else queue. MongoDB caps transaction lifetime at 60 seconds by default and aborts past that.
+
+What each isolation level actually guarantees is [written up separately](/notes/isolation-levels).
 
 ## One way in
 
@@ -127,7 +151,7 @@ It reads the stored balance, sums the history, and compares. If those two reads 
 
 <SnapshotRace />
 
-Both reads have to happen inside one consistent snapshot. At [REPEATABLE READ](/notes/isolation-levels) or above, the transaction keeps seeing the snapshot from when it began, so both reads observe the same moment. Summing is a multi-row scan to begin with, so without a snapshot even the sum is unstable.
+Both reads have to happen inside one consistent snapshot. In MongoDB that means opening a transaction and reading with `readConcern: "snapshot"`. In a relational database, [REPEATABLE READ](/notes/isolation-levels) or above does the same job. Summing is a multi-document scan to begin with, so without a snapshot even the sum is unstable.
 
 ## I settled the existing gaps in the user's favor
 

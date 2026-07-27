@@ -57,30 +57,54 @@ UPDATE balances SET balance = balance - 30
 
 ## 락이 실제로 하는 일
 
-`$inc`나 `balance = balance - 30`이 안전한 이유는 데이터베이스가 그 행에 배타 락을 잡기 때문입니다. 락을 쥔 트랜잭션이 끝날 때까지 같은 행을 바꾸려는 다른 트랜잭션은 대기합니다. 동시 실행이 순차 실행처럼 됩니다.
+우리 시스템은 MongoDB였습니다. MongoDB는 **단일 문서 연산이 원자적**입니다. `$inc` 한 줄이면 락을 직접 잡을 필요가 없습니다. WiredTiger가 문서 단위로 동시성을 제어하고, 쓰기 충돌이 나면 내부적으로 재시도합니다.
 
-명시적으로 잡을 수도 있습니다.
+그래서 관계형 DB에서 쓰는 `SELECT ... FOR UPDATE` 같은 명시적 행 락이 MongoDB에는 없습니다. 대신 **조건을 필터에 넣습니다.**
 
-```sql
-BEGIN;
-SELECT balance FROM balances WHERE user_id = ? FOR UPDATE;  -- 여기서 락
--- 애플리케이션에서 검증하고 계산
-UPDATE balances SET balance = ? WHERE user_id = ?;
-COMMIT;                                                     -- 여기서 해제
+```javascript
+// 잔액이 충분할 때만 차감. 조건이 안 맞으면 아무 일도 일어나지 않는다
+const res = await balances.findOneAndUpdate(
+  { userId, balance: { $gte: 30 } },
+  { $inc: { balance: -30 } },
+  { returnDocument: "after" }
+);
+if (!res) throw new Error("잔액 부족");
 ```
 
-`FOR UPDATE`가 비관적 락입니다. 충돌이 날 거라고 가정하고 미리 막습니다. 낙관적 락은 반대로, 막지 않고 나중에 확인합니다.
+필터와 갱신이 한 연산 안에서 원자적으로 처리됩니다. 관계형에서 `UPDATE ... WHERE balance >= 30`을 쓰고 영향 행 수로 판정하는 것과 같은 역할이고, 발상은 compare-and-swap입니다.
 
-```sql
-UPDATE balances SET balance = ?, version = version + 1
- WHERE user_id = ? AND version = ?;  -- 0행이면 남이 먼저 바꾼 것, 재시도
+버전 필드를 쓰는 낙관적 락도 같은 모양입니다.
+
+```javascript
+const res = await docs.updateOne(
+  { _id, version: expected },
+  { $set: next, $inc: { version: 1 } }
+);
+if (res.matchedCount === 0) {
+  // 남이 먼저 바꿨다. 다시 읽고 재시도
+}
 ```
 
-경합이 잦으면 비관적, 드물면 낙관적이 유리합니다. 격리 수준별로 무엇이 보장되는지는 [따로 정리해 뒀습니다](/ko/notes/isolation-levels). 코인 차감처럼 한 유저의 행에만 몰리는 작업은 경합이 짧고 국소적이라 원자 연산 한 줄로 끝내는 게 제일 쌉니다.
+**문제는 바꿔야 할 문서가 둘 이상일 때입니다.** 히스토리를 넣고 잔액을 갱신하는 건 서로 다른 컬렉션에 대한 두 번의 쓰기입니다. 문서 단위 원자성은 여기까지 보장해주지 않습니다. 그 사이에서 프로세스가 죽으면 정확히 우리가 겪던 상태가 됩니다.
 
-**트랜잭션이 필요한 건 바꿔야 할 곳이 둘 이상일 때입니다.** 히스토리를 넣고 잔액을 갱신하는 건 두 번의 쓰기입니다. 그 사이에서 프로세스가 죽으면 정확히 우리가 겪던 상태가 됩니다. 하나로 묶어야 둘 다 되거나 둘 다 안 됩니다.
+MongoDB 4.0부터는 다중 문서 트랜잭션을 쓸 수 있습니다. 레플리카셋 구성이 필요합니다.
 
-주의할 게 둘 있습니다. 락은 커밋될 때까지 유지되므로 트랜잭션 안에서 외부 API를 호출하면 안 됩니다. 그 시간만큼 다른 요청이 줄을 섭니다. 그리고 여러 행에 락을 잡는다면 항상 같은 순서로 잡아야 합니다. 순서가 엇갈리면 데드락입니다.
+```javascript
+await session.withTransaction(async () => {
+  await history.insertOne(entry, { session });
+  await balances.updateOne(
+    { userId },
+    { $inc: { balance: entry.amount } },
+    { session }
+  );
+});
+```
+
+`withTransaction`은 일시적 충돌이 나면 콜백을 **자동으로 다시 실행합니다.** 그래서 콜백은 여러 번 돌아도 괜찮게 써야 합니다. 안에서 외부 API를 호출하면 안 되는 이유이기도 합니다.
+
+나머지 주의점은 관계형 DB와 같습니다. 트랜잭션은 자원을 커밋까지 붙잡습니다. 길어지면 다른 요청이 밀립니다. MongoDB는 기본 트랜잭션 수명이 60초로 제한되어 있고, 넘기면 중단됩니다.
+
+격리 수준별로 무엇이 보장되는지는 [따로 정리해 뒀습니다](/ko/notes/isolation-levels).
 
 ## 창구를 하나로
 
@@ -128,7 +152,7 @@ async function applyCoinChange(p: {
 
 <SnapshotRace />
 
-일관된 스냅샷 안에서 읽어야 합니다. [REPEATABLE READ](/ko/notes/isolation-levels) 이상이면 트랜잭션이 시작한 시점의 스냅샷을 계속 보기 때문에 두 읽기가 같은 순간을 봅니다. 합산 자체가 여러 행을 훑는 작업이라, 스냅샷이 없으면 합계도 흔들립니다.
+일관된 스냅샷 안에서 읽어야 합니다. MongoDB에서는 트랜잭션을 열고 `readConcern: "snapshot"`으로 읽으면 두 읽기가 같은 순간을 봅니다. 관계형이라면 [REPEATABLE READ](/ko/notes/isolation-levels) 이상이 같은 역할을 합니다. 합산 자체가 여러 문서를 훑는 작업이라, 스냅샷이 없으면 합계도 흔들립니다.
 
 ## 기존 불일치는 유저 쪽으로 기울여 맞췄다
 

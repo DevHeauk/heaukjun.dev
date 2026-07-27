@@ -90,6 +90,20 @@ UPDATE seats SET taken = 1
  WHERE id = ? AND taken = 0;   -- zero rows affected means someone got there first
 ```
 
+## MongoDB calls it something else
+
+MongoDB has no `READ COMMITTED`-style isolation setting. It splits the same concerns into **readConcern** and **writeConcern**.
+
+| readConcern | What you see |
+|---|---|
+| `local` | The newest value on this node. Can still be rolled back |
+| `majority` | A value acknowledged by a majority, so it won't be rolled back |
+| `snapshot` | A consistent snapshot from when the transaction began (inside a transaction) |
+
+Mapped roughly onto the relational names: `local` sits near READ UNCOMMITTED because of that rollback window, `majority` behaves like READ COMMITTED, and `snapshot` inside a transaction plays the REPEATABLE READ role.
+
+Also, **single-document operations are atomic regardless of any of this.** Opening a transaction for something a single `$inc` can do only adds cost. Transactions are for when more than one document has to change together.
+
 ## Common traps
 
 **Isolation levels only guarantee read consistency.** "The value I read won't change" and "nobody else can write until I do" are different promises. For the second one you need `SELECT ... FOR UPDATE` or a version-based conditional update.

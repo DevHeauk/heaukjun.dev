@@ -91,6 +91,20 @@ UPDATE seats SET taken = 1
  WHERE id = ? AND taken = 0;   -- 영향 행이 0이면 이미 남이 가져감
 ```
 
+## MongoDB는 이름이 다릅니다
+
+MongoDB에는 `READ COMMITTED` 같은 격리 수준 설정이 없습니다. 대신 **readConcern**과 **writeConcern**으로 나눠 표현합니다.
+
+| readConcern | 무엇을 보나 |
+|---|---|
+| `local` | 이 노드가 가진 최신 값. 롤백될 수 있음 |
+| `majority` | 과반 노드에 반영되어 되돌아가지 않을 값 |
+| `snapshot` | 트랜잭션 시작 시점의 일관된 스냅샷 (트랜잭션 안에서) |
+
+관계형과 대응시키면 대략 이렇습니다. `local`이 READ UNCOMMITTED에 가깝고(롤백 가능성), `majority`가 READ COMMITTED, 트랜잭션 안의 `snapshot`이 REPEATABLE READ 역할을 합니다.
+
+그리고 **단일 문서 연산은 격리 수준과 무관하게 항상 원자적입니다.** `$inc` 하나로 끝나는 일에 트랜잭션을 여는 건 비용만 늘립니다. 여러 문서를 함께 바꿔야 할 때만 트랜잭션이 필요합니다.
+
 ## 흔한 함정
 
 **격리 수준은 읽기 일관성만 보장합니다.** "읽은 값이 안 바뀐다"와 "내가 쓸 때까지 남이 못 쓴다"는 다른 이야기입니다. 후자가 필요하면 `SELECT ... FOR UPDATE`나 버전 기반 조건부 갱신이 필요합니다.

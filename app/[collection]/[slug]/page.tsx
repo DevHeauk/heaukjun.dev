@@ -3,9 +3,11 @@ import { notFound } from "next/navigation";
 import { MDXRemote } from "next-mdx-remote/rsc";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
-import { getAll, getOne, type Collection } from "@/lib/posts";
+import rehypeSlug from "rehype-slug";
+import { getAll, getOne, headings, type Collection } from "@/lib/posts";
 import { SECTIONS, isCollection } from "@/lib/sections";
 import { mdxComponents } from "@/components/mdx";
+import Toc from "@/components/toc";
 
 export function generateStaticParams() {
   return (Object.keys(SECTIONS) as Collection[]).flatMap((collection) =>
@@ -48,13 +50,14 @@ export default async function Page({
           </>
         )}
       </p>
+      <Toc headings={headings(post.content)} />
       <MDXRemote
         source={post.content}
         components={mdxComponents("en")}
         options={{
           mdxOptions: {
             remarkPlugins: [remarkGfm],
-            rehypePlugins: [rehypeHighlight],
+            rehypePlugins: [rehypeSlug, rehypeHighlight],
           },
         }}
       />

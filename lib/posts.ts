@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
+import GithubSlugger from "github-slugger";
 
 /**
  * Korean is the source language.
@@ -94,4 +95,31 @@ export function getAll(collection: Collection, lang: Lang): Post[] {
 
 export function getOne(collection: Collection, slug: string, lang: Lang) {
   return build(collection, slug, lang);
+}
+
+/** Headings for the table of contents, matching rehype-slug's ids. */
+export function headings(content: string) {
+  const slugger = new GithubSlugger();
+  const out: { id: string; text: string; depth: 2 | 3 }[] = [];
+  let inCode = false;
+
+  for (const line of content.split("\n")) {
+    if (line.startsWith("```")) {
+      inCode = !inCode;
+      continue;
+    }
+    if (inCode) continue;
+
+    const m = /^(#{2,3})\s+(.*)$/.exec(line);
+    if (!m) continue;
+
+    const text = m[2]
+      .replace(/`([^`]+)`/g, "$1")
+      .replace(/\*\*([^*]+)\*\*/g, "$1")
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+      .trim();
+
+    out.push({ id: slugger.slug(text), text, depth: m[1].length as 2 | 3 });
+  }
+  return out;
 }

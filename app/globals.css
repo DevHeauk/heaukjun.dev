@@ -361,3 +361,61 @@ main th {
 .table-scroll {
   overflow-x: auto;
 }
+
+/* Table of contents — sits beside the column, only when there's room */
+.toc {
+  display: none;
+}
+
+@media (min-width: 1100px) {
+  .toc {
+    display: block;
+    position: fixed;
+    top: 7rem;
+    left: calc(50% + 33ch + 3rem);
+    width: 15rem;
+    max-height: calc(100vh - 12rem);
+    overflow-y: auto;
+    font-size: 0.82rem;
+    line-height: 1.5;
+  }
+
+  .toc ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-left: 1px solid color-mix(in srgb, var(--muted) 25%, transparent);
+  }
+
+  .toc li {
+    margin: 0;
+  }
+
+  .toc a {
+    display: block;
+    padding: 0.28rem 0 0.28rem 0.9rem;
+    color: var(--muted);
+    border-left: 1px solid transparent;
+    margin-left: -1px;
+  }
+
+  .toc a:hover {
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  .toc a.toc-active {
+    color: var(--accent);
+    border-left-color: var(--accent);
+  }
+
+  .toc .toc-sub a {
+    padding-left: 1.8rem;
+    font-size: 0.95em;
+  }
+}
+
+/* Anchor targets clear the top of the viewport when jumped to */
+main :is(h2, h3) {
+  scroll-margin-top: 2rem;
+}
