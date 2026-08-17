@@ -66,6 +66,15 @@ const copy = {
     queued: "넘치면 대기열",
     chain: "느린 쿼리 하나가 서비스 전체를 세우는 경로",
     chainSteps: ["인덱스 없음", "풀스캔", "커넥션 오래 점유", "풀 고갈", "전체 지연"],
+    counterPaths: "같은 값을 매번 세는 구조와, 값 하나를 들고 있는 구조",
+    msgArrives: "메시지 도착",
+    screenOpens: "화면 열기",
+    dbUpdate: "UPDATE messages",
+    dbCount: "SELECT COUNT(*) WHERE read = false",
+    everyTime: "접속자 전원이 · 화면 켤 때마다 · 계속",
+    redisIncr: "INCR user:5:unread",
+    redisGet: "GET user:5:unread",
+    writeBack: "DB엔 가끔만 write-back",
   },
   en: {
     twoTruths: "Two truths drifting apart, and the same thing collapsed into one",
@@ -96,6 +105,15 @@ const copy = {
     queued: "overflow queues",
     chain: "How one slow query stalls the whole service",
     chainSteps: ["no index", "full scan", "connection held", "pool drained", "everything waits"],
+    counterPaths: "Counting the same rows again and again, versus holding one number",
+    msgArrives: "message arrives",
+    screenOpens: "screen opens",
+    dbUpdate: "UPDATE messages",
+    dbCount: "SELECT COUNT(*) WHERE read = false",
+    everyTime: "every user · every time a screen opens · forever",
+    redisIncr: "INCR user:5:unread",
+    redisGet: "GET user:5:unread",
+    writeBack: "the database is written now and then",
   },
 } as const;
 
@@ -312,6 +330,73 @@ function Chain({ lang }: { lang: Lang }) {
   );
 }
 
+function CounterPaths({ lang }: { lang: Lang }) {
+  const t = copy[lang];
+  return (
+    <Figure caption={t.counterPaths}>
+      <svg viewBox="0 0 620 280" role="img" aria-label={t.counterPaths}>
+        <Arrowhead />
+
+        <text x="0" y="12" className="d-label">
+          {t.before}
+        </text>
+
+        <rect x="0" y="24" width="140" height="28" rx="4" className="d-box" />
+        <text x="70" y="42" className="d-text d-mid d-sm">
+          {t.msgArrives}
+        </text>
+        <path d="M140 38 L300 38" className="d-line d-arrow" />
+        <rect x="304" y="24" width="300" height="28" rx="4" className="d-box" />
+        <text x="454" y="42" className="d-text d-mid d-mono">
+          {t.dbUpdate}
+        </text>
+
+        <rect x="0" y="68" width="140" height="28" rx="4" className="d-box" />
+        <text x="70" y="86" className="d-text d-mid d-sm">
+          {t.screenOpens}
+        </text>
+        <path d="M140 82 L300 82" className="d-line d-arrow" />
+        <rect x="304" y="68" width="300" height="28" rx="4" className="d-box d-warn" />
+        <text x="454" y="86" className="d-text d-mid d-mono">
+          {t.dbCount}
+        </text>
+        <text x="304" y="112" className="d-text d-warn-text d-sm">
+          {t.everyTime}
+        </text>
+
+        <text x="0" y="158" className="d-label">
+          {t.after}
+        </text>
+
+        <rect x="0" y="170" width="140" height="28" rx="4" className="d-box" />
+        <text x="70" y="188" className="d-text d-mid d-sm">
+          {t.msgArrives}
+        </text>
+        <path d="M140 184 L300 184" className="d-line d-arrow" />
+        <rect x="304" y="170" width="300" height="28" rx="4" className="d-box d-ok" />
+        <text x="454" y="188" className="d-text d-mid d-mono">
+          {t.redisIncr}
+        </text>
+
+        <rect x="0" y="214" width="140" height="28" rx="4" className="d-box" />
+        <text x="70" y="232" className="d-text d-mid d-sm">
+          {t.screenOpens}
+        </text>
+        <path d="M140 228 L300 228" className="d-line d-arrow" />
+        <rect x="304" y="214" width="300" height="28" rx="4" className="d-box d-ok" />
+        <text x="454" y="232" className="d-text d-mid d-mono">
+          {t.redisGet}
+        </text>
+
+        <path d="M304 262 L420 262" className="d-line d-dash d-arrow" />
+        <text x="428" y="266" className="d-text d-muted d-sm">
+          {t.writeBack}
+        </text>
+      </svg>
+    </Figure>
+  );
+}
+
 export function mdxComponents(lang: Lang) {
   return {
     TwoTruths: () => <TwoTruths lang={lang} />,
@@ -319,5 +404,6 @@ export function mdxComponents(lang: Lang) {
     PoolCap: () => <PoolCap lang={lang} />,
     Multiplexing: () => <Multiplexing lang={lang} />,
     Chain: () => <Chain lang={lang} />,
+    CounterPaths: () => <CounterPaths lang={lang} />,
   };
 }
