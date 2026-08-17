@@ -1,0 +1,128 @@
+---
+title: "Deadlocks"
+summary: "Four conditions have to hold at once, so the fix is to break one of them. And in a database, they happen where you never realised you were taking a lock."
+---
+
+Two transactions each holding a lock the other one needs, waiting forever.
+
+It's tempting to file this under "happens when concurrency is high", but a deadlock needs **four conditions to hold at the same time**. That framing matters, because it turns the goal from "eliminate deadlocks" into **"break one of the four"**.
+
+## The four conditions
+
+| Condition | Meaning |
+|---|---|
+| Mutual exclusion | Only one holder at a time |
+| Hold and wait | You keep what you hold while waiting for more |
+| No preemption | Nobody can take it away from you |
+| Circular wait | A waits on B waits on C … waits on A |
+
+The first three are close to being the definition of a lock. Something several parties can hold at once isn't a lock, and neither is something anyone can seize from you.
+
+**So in practice the one you break is the fourth: circular wait.**
+
+## Which one to break
+
+| Condition broken | How |
+|---|---|
+| Circular wait | **Fix the lock ordering.** This is the usual answer |
+| Hold and wait | Take every lock you need at once, or release everything if you can't |
+| No preemption | **Timeouts.** Same effect as taking it away |
+| Mutual exclusion | Remove the need for the lock — immutable data, partitioning |
+
+Textbooks list four strategies — prevention, avoidance, detection, recovery — but avoidance (the banker's algorithm) is effectively theoretical. Computing "would granting this lead to a deadlock?" on every request is not a cost real systems pay.
+
+## Applications prevent, databases detect
+
+Same problem, different strategy at each layer. There's a reason for that.
+
+| Layer | Strategy | Why |
+|---|---|---|
+| Application code | **Prevention** — lock order fixed in code | You control the order everything is acquired in |
+| Database | **Detection + recovery** — kill one when stuck | It **cannot know** what order arbitrary transactions will ask for locks in |
+
+A database takes queries from arbitrary applications in arbitrary order. With no way to impose an ordering, it gives up on prevention and instead gets good at spotting the cycle and cutting it.
+
+## How a database finds one
+
+It maintains a **wait-for graph**: nodes are transactions, edges are "waiting on". **A cycle in that graph is a deadlock.** It's cycle detection, so it comes down to a depth-first search.
+
+Once found, it picks a **victim to roll back** and breaks the cycle.
+
+| Database | When it checks | Victim |
+|---|---|---|
+| MySQL (InnoDB) | **Immediately**, every time a lock wait begins | The transaction with the least undo log — the **cheapest to roll back** |
+| PostgreSQL | **After** `deadlock_timeout` (1s by default) | Usually whoever asked most recently |
+
+**It's a choice between being immediately right and being cheaply right.** MySQL pays the check on every wait and reacts fast. PostgreSQL bets that most lock waits clear on their own within a second, and it's not a bad bet — most of them do.
+
+The same shape of choice shows up in cache invalidation and health check intervals.
+
+## Which queries take locks
+
+This is where it goes wrong most often in practice. **Statements with no `LOCK` in them are locks.**
+
+| Statement | Lock |
+|---|---|
+| `UPDATE` / `DELETE` | **Exclusive lock**, taken automatically |
+| `SELECT ... FOR UPDATE` | Exclusive, deliberately |
+| `SELECT ... FOR SHARE` | Shared — read together, writes blocked |
+| A plain `SELECT` | **None** |
+
+That last row is MVCC (multi-version concurrency control). Updating a row leaves the old version in place rather than overwriting it, so readers can look at whichever version existed when their transaction started. **Reads don't block writes and writes don't block reads.** Query traffic simply stays out of the contention.
+
+One more thing: **a lock is held until commit or rollback.** That's two-phase locking — a transaction only ever acquires while it runs, and releases everything at the end.
+
+> The longer a transaction runs, the longer it holds its locks, and the wider the window in which a deadlock can form. That's the actual reason behind "keep transactions short".
+
+## How often does this happen — two different things
+
+| Kind | Frequency |
+|---|---|
+| **Coincidental** — two arbitrary rows happen to be locked in opposite orders | Rare |
+| **Structural** — two code paths **always** lock in opposite orders | Not rare at all |
+
+The second isn't really about probability. The ordering is baked into the code, so **with enough traffic it's a matter of time**.
+
+```sql
+-- API A: transfer
+UPDATE accounts SET balance = balance - 100 WHERE id = 1;  -- locks row 1
+UPDATE accounts SET balance = balance + 100 WHERE id = 2;  -- waits on row 2
+
+-- API B: refund. Written by someone else, in the opposite order
+UPDATE accounts SET balance = balance + 100 WHERE id = 2;  -- locks row 2
+UPDATE accounts SET balance = balance - 100 WHERE id = 1;  -- waits on row 1
+```
+
+Add a **hot row** and the odds go up sharply. Settlement accounts, fee accounts, a popular merchant's account — **rows every transaction passes through**. Two ordinary users rarely collide, but on a row taking hundreds of writes a second, a single reversed code path is enough to produce deadlocks steadily.
+
+## The fix is to make the order a rule
+
+```sql
+-- Always lock the lower id first
+UPDATE accounts SET balance = balance - :amt WHERE id = LEAST(:from, :to);
+UPDATE accounts SET balance = balance + :amt WHERE id = GREATEST(:from, :to);
+```
+
+Sorting in the application — `if (from > to) swap(from, to)` — and always issuing in that order works just as well. **As long as every path follows the rule, the cycle can't form in the first place.**
+
+In practice you add one more thing: **retry on deadlock errors.** Preventing and absorbing aren't mutually exclusive, and an ordering rule won't cover every coincidental collision.
+
+## Why this one only gets caught in review
+
+- **It doesn't reproduce locally.** You need both directions arriving at once
+- **Unit tests miss it.** API A is correct. API B is correct. They're only wrong together
+- **Static analysis struggles.** Nothing is syntactically wrong — an **ordering agreement between two files** has been broken
+
+So it takes someone asking "isn't this UPDATE order the reverse of the other endpoint?". This is the case where review stops being about style and starts covering ground **tests structurally cannot reach**.
+
+## Common misconceptions
+
+**It isn't caused by a high isolation level.** Deadlocks happen at READ COMMITTED too. What drives them is **lock scope**, not isolation level — and wider scope means more of them, which is why MySQL sees more deadlocks under REPEATABLE READ, thanks to gap locks, than under READ COMMITTED.
+
+**What you get from PostgreSQL's SERIALIZABLE may not be a deadlock at all.** That implementation uses conflict detection (SSI) rather than locking, so it raises a serialization failure instead of waiting. The symptom looks similar; the cause and the handling differ.
+
+**One kind of lock is enough.** The problem isn't the variety of locks but **having more than one instance and disagreeing on the order**. Taken to the extreme, a thread that locks a non-reentrant mutex twice deadlocks with itself — a cycle of length one.
+
+---
+
+There's more on lock scope and isolation in [transaction isolation levels](/notes/isolation-levels). And keeping transactions short connects to [connection pooling](/notes/connection-pooling) — holding a lock for a long time means holding a connection for just as long.
